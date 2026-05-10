@@ -1,12 +1,15 @@
 # Google Drive Memory Map
 _Generated: 2026-05-10 · Account: scottsstuffforall@gmail.com_
+_Folders: all created/modified within last 2 years (since 2024-05-10)_
 
 ---
 
 ## My Drive
 
 ```
-My Mac/  (root computer backup)
+My Mac/  (root Mac backup, synced via Google Drive for Desktop)
+├── Desktop/
+│   └── untitled folder/
 ├── Documents/
 │   └── New project/
 │       ├── skills-lock.json
@@ -117,6 +120,24 @@ My Mac/  (root computer backup)
     │       ├── claude_code_handoff_template.md
     │       ├── opportunity_patterns.md
     │       └── cli_inventory.md
+```
+
+USB and External Devices/  (top-level My Drive folder for removable media)
+├── NO NAME/               ← Nikon SD card (Oct 2025)
+│   ├── DCIM/
+│   │   ├── 100NIKON/
+│   │   └── 101NIKON/
+│   ├── NCFL/
+│   └── MISC/
+└── AI/
+    └── USB-Uncensored-LLM-main/   ← USB bootable local-LLM project (May 2026)
+        ├── Mac/
+        ├── Windows/
+        ├── Linux/
+        ├── Android/
+        ├── Shared/
+        └── [hundreds of deep node_modules subdirs: prov/, include/,
+            dist-es/, dist-cjs/, common/, crypto/, openssl/, …]
 ```
 
 ---
