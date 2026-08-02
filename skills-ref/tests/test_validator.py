@@ -264,6 +264,101 @@ Body
     assert any("exceeds" in e and "500" in e for e in errors)
 
 
+def test_compatibility_empty_rejected(tmp_path):
+    """Compatibility must be 1-500 chars, so an empty value should fail."""
+    skill_dir = tmp_path / "my-skill"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text("""---
+name: my-skill
+description: A test skill
+compatibility: ''
+---
+Body
+""")
+    errors = validate(skill_dir)
+    assert any("'compatibility' must be a non-empty string" in e for e in errors)
+
+
+def test_license_empty_rejected(tmp_path):
+    """An empty license value should fail."""
+    skill_dir = tmp_path / "my-skill"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text("""---
+name: my-skill
+description: A test skill
+license: ''
+---
+Body
+""")
+    errors = validate(skill_dir)
+    assert any("'license' must be a non-empty string" in e for e in errors)
+
+
+def test_license_non_string_rejected(tmp_path):
+    """license must be a string, not a mapping."""
+    skill_dir = tmp_path / "my-skill"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text("""---
+name: my-skill
+description: A test skill
+license:
+  name: MIT
+---
+Body
+""")
+    errors = validate(skill_dir)
+    assert any("'license' must be a string" in e for e in errors)
+
+
+def test_allowed_tools_list_rejected(tmp_path):
+    """allowed-tools is a space-separated string, not a YAML list."""
+    skill_dir = tmp_path / "my-skill"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text("""---
+name: my-skill
+description: A test skill
+allowed-tools:
+  - Read
+  - Bash(git:*)
+---
+Body
+""")
+    errors = validate(skill_dir)
+    assert any("'allowed-tools' must be a space-separated string" in e for e in errors)
+
+
+def test_metadata_non_mapping_rejected(tmp_path):
+    """metadata must be a mapping, not a scalar."""
+    skill_dir = tmp_path / "my-skill"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text("""---
+name: my-skill
+description: A test skill
+metadata: not-a-mapping
+---
+Body
+""")
+    errors = validate(skill_dir)
+    assert any("'metadata' must be a mapping" in e for e in errors)
+
+
+def test_metadata_list_rejected(tmp_path):
+    """metadata must be a mapping, not a list."""
+    skill_dir = tmp_path / "my-skill"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text("""---
+name: my-skill
+description: A test skill
+metadata:
+  - author
+  - version
+---
+Body
+""")
+    errors = validate(skill_dir)
+    assert any("'metadata' must be a mapping" in e for e in errors)
+
+
 def test_nfkc_normalization(tmp_path):
     """Skill names are NFKC normalized before validation.
 

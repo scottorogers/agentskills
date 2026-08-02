@@ -92,10 +92,58 @@ def _validate_compatibility(compatibility: str) -> list[str]:
         errors.append("Field 'compatibility' must be a string")
         return errors
 
+    if not compatibility.strip():
+        errors.append("Field 'compatibility' must be a non-empty string")
+        return errors
+
     if len(compatibility) > MAX_COMPATIBILITY_LENGTH:
         errors.append(
             f"Compatibility exceeds {MAX_COMPATIBILITY_LENGTH} character limit "
             f"({len(compatibility)} chars)"
+        )
+
+    return errors
+
+
+def _validate_license(license: str) -> list[str]:
+    """Validate license format."""
+    errors = []
+
+    if not isinstance(license, str):
+        errors.append("Field 'license' must be a string")
+        return errors
+
+    if not license.strip():
+        errors.append("Field 'license' must be a non-empty string")
+
+    return errors
+
+
+def _validate_allowed_tools(allowed_tools: str) -> list[str]:
+    """Validate allowed-tools format.
+
+    Per the spec, this is a single space-separated string rather than a list.
+    """
+    errors = []
+
+    if not isinstance(allowed_tools, str):
+        errors.append(
+            "Field 'allowed-tools' must be a space-separated string of tool names"
+        )
+
+    return errors
+
+
+def _validate_metadata_field(metadata: dict) -> list[str]:
+    """Validate the metadata field.
+
+    Per the spec, metadata is a mapping from string keys to string values.
+    """
+    errors = []
+
+    if not isinstance(metadata, dict):
+        errors.append(
+            "Field 'metadata' must be a mapping of string keys to string values"
         )
 
     return errors
@@ -143,6 +191,15 @@ def validate_metadata(metadata: dict, skill_dir: Optional[Path] = None) -> list[
 
     if "compatibility" in metadata:
         errors.extend(_validate_compatibility(metadata["compatibility"]))
+
+    if "license" in metadata:
+        errors.extend(_validate_license(metadata["license"]))
+
+    if "allowed-tools" in metadata:
+        errors.extend(_validate_allowed_tools(metadata["allowed-tools"]))
+
+    if "metadata" in metadata:
+        errors.extend(_validate_metadata_field(metadata["metadata"]))
 
     return errors
 
