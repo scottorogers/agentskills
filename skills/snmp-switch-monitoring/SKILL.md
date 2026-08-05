@@ -1,0 +1,193 @@
+---
+name: snmp-switch-monitoring
+description: Monitor network switches and routers over SNMP - check port/interface status, bandwidth utilisation, error counters and uptime, discover devices on a subnet, poll continuously with alerting, and produce an HTML dashboard. Use when the user mentions SNMP, switches, routers, firewalls, port or interface status, links going down, bandwidth or throughput monitoring, network device inventory, MIBs or OIDs, or names network hardware such as Cisco, HPE, Aruba, Juniper, Ubiquiti, UniFi, MikroTik, Netgear or TP-Link.
+license: Apache-2.0
+compatibility: Requires Python 3.9+ and UDP/161 reachability to the target devices. No pip install needed; SNMPv3 encryption (authPriv) optionally uses the 'cryptography' package.
+metadata:
+  version: "1.0"
+---
+
+# SNMP switch monitoring
+
+Read-only monitoring of network gear over SNMP v1/v2c/v3, implemented on the
+Python standard library so there is nothing to install on the customer's
+machine. Two scripts do all the work:
+
+- `scripts/netmon.py` — the CLI: check, discover, poll, watch, report, events
+- `scripts/snmp.py` — the SNMP engine (importable if you need raw OID access)
+
+## Start here
+
+Run the command that matches what the user asked for. All commands work from
+the skill directory with no setup.
+
+```bash
+# Is this switch healthy? Which ports are up? (no config file needed)
+python3 scripts/netmon.py check 192.168.1.254 -c public
+
+# What SNMP devices are on this network? Writes netmon.json.
+python3 scripts/netmon.py discover 192.168.1.0/24 -c public -c private
+
+# Continuous monitoring with alerts on port down, saturation and errors
+python3 scripts/netmon.py watch
+
+# Shareable HTML dashboard from collected history
+python3 scripts/netmon.py report --out dashboard.html
+```
+
+`check` is almost always the right first command: it proves connectivity and
+credentials in one step and needs no configuration.
+
+## No hardware? Demonstrate against the simulator
+
+`scripts/mock_switch.py` is a fake 24-port switch that speaks real SNMP. Use it
+to show the tool working, or to test changes.
+
+```bash
+python3 scripts/mock_switch.py --port 11161 --flap 8 --errors 12 --saturate 3 &
+python3 scripts/netmon.py check 127.0.0.1:11161
+```
+
+The `--flap`, `--errors` and `--saturate` flags inject faults so alerting can
+be seen firing. Any `host:port` target works throughout, which is what makes
+non-privileged local testing possible.
+
+## Domain rules that matter
+
+Apply these; getting them wrong produces monitoring that looks fine and is
+quietly useless.
+
+1. **Always prefer the 64-bit counters** (`ifHCInOctets`, `.1.3.6.1.2.1.31.1.1.1.6`).
+   The 32-bit `ifInOctets` counter wraps in roughly 34 seconds on a saturated
+   1 Gb/s port, so any tool polling at 60s intervals against 32-bit counters
+   reports garbage. `netmon.py` falls back to 32-bit only when the device has
+   no ifXTable, and records which was used.
+2. **Bandwidth is a derived rate, never a reading.** It comes from the delta
+   between two consecutive polls. A single poll cannot report throughput — if
+   the user wants bandwidth, they need `watch` or two `poll` runs.
+3. **Utilisation is `max(in, out) / speed`, not `(in + out) / speed`.**
+   Ethernet is full duplex; each direction has the full link rate.
+4. **Alert on transitions, not on state.** A port that is admin-up and
+   oper-down at first sight is usually an empty socket, not an outage. The
+   default only fires when a port that was up goes down. Set
+   `alerts.alert_on_down_at_start` to change this.
+5. **Use `ifHighSpeed` for link speed above 1 Gb/s.** `ifSpeed` is a 32-bit
+   gauge that pins at 4294967295 on 10G+ interfaces.
+6. **Community strings are credentials.** Never print them, commit them, or
+   pass them on a shared command line. Put them in `netmon.json` (written
+   mode 600) or reference an environment variable as `"${SW_COMMUNITY}"`.
+7. **This skill only reads.** It issues GET/GETNEXT/GETBULK and never SET.
+   Do not add SET operations without explicit confirmation from the user —
+   a mistyped SET can disable a production port.
+
+## Commands
+
+| Command | Purpose |
+|---|---|
+| `check HOST` | One-off: system info + full port table. No config needed. |
+| `discover TARGET...` | Probe IPs/CIDRs, identify devices, write `netmon.json`. |
+| `poll` | One cycle over configured devices; stores to SQLite. |
+| `watch` | Poll on an interval, evaluate alerts, notify. |
+| `report` | Self-contained HTML dashboard from stored history. |
+| `events` | List recorded alerts (`--open-only` for current problems). |
+
+Useful flags: `--json` on `check`/`poll` for machine-readable output,
+`-v 3 -u USER --auth-proto SHA --auth-pass ...` for SNMPv3, `--config` and
+`--db` to relocate state, `--interval` on `watch`.
+
+## Configuration
+
+`netmon.json` is created by `discover`. Defaults apply to every device unless
+overridden per device.
+
+```json
+{
+  "defaults": { "version": "2c", "community": "${SW_COMMUNITY}", "interval": 60 },
+  "thresholds": {
+    "utilization_pct": 80.0,
+    "errors_per_min": 10.0,
+    "discards_per_min": 50.0,
+    "unreachable_polls": 3
+  },
+  "alerts": {
+    "log": "netmon-alerts.log",
+    "webhook": "https://hooks.example.com/...",
+    "command": "/usr/local/bin/notify.sh"
+  },
+  "ignore_ports": ["Vlan*", "Null*", "Loopback*", "*.[0-9]*"],
+  "devices": [
+    { "host": "192.168.1.254", "name": "core-sw", "community": "${SW_COMMUNITY}" }
+  ]
+}
+```
+
+`unreachable_polls: 3` means a device must fail three consecutive polls before
+alerting — this suppresses the false alarms that single dropped UDP packets
+would otherwise cause. Alert commands receive `NETMON_HOST`, `NETMON_SEVERITY`,
+`NETMON_KIND`, `NETMON_STATE` and `NETMON_MESSAGE` in the environment.
+
+## When things do not work
+
+Read `references/troubleshooting.md` when a poll fails, a device answers only
+partially, or counters look implausible. It maps each symptom to its cause.
+
+The three causes, in the order they actually occur:
+
+1. SNMP is not enabled on the device, or the polling host is not in its
+   allow-list (most devices restrict SNMP by source IP).
+2. Wrong community string or v3 credentials. A wrong community produces
+   **silence**, not an error — agents are required to stay quiet, so it is
+   indistinguishable from a firewall drop without checking the device.
+3. UDP/161 blocked by an ACL or host firewall between here and there.
+
+`check` prints these hints automatically on failure, and distinguishes "host
+up but no agent listening" (ICMP port-unreachable) from "no reply at all".
+
+## Reference material
+
+Load these only when the task calls for them:
+
+- `references/oids.md` — OID catalogue: standard MIB-II/IF-MIB, plus vendor
+  OIDs for CPU, memory, temperature and PoE on Cisco, HPE/Aruba, Juniper,
+  MikroTik and Ubiquiti. Read this when the user wants a metric beyond ports
+  and traffic.
+- `references/device-setup.md` — how to enable SNMP, per vendor, with the
+  exact configuration commands. Read this when the user needs to turn SNMP on.
+- `references/troubleshooting.md` — symptom-to-cause table. Read this on any
+  polling failure or suspicious data.
+
+## Extending
+
+To collect an OID this tool does not cover, use the engine directly rather
+than shelling out to `snmpwalk`:
+
+```python
+import sys; sys.path.insert(0, "scripts")
+from snmp import Session
+
+with Session("192.168.1.254", community="public") as s:
+    cpu = s.get_one("1.3.6.1.4.1.9.9.109.1.1.1.1.8.1")   # Cisco 5-min CPU
+    print(cpu.value if cpu else "not supported by this device")
+    for row in s.walk("1.3.6.1.2.1.31.1.1.1.18"):        # ifAlias
+        print(row.oid, row.text())
+```
+
+`get_one` returns `None` when the device does not implement the OID, so
+vendor-specific probing can be attempted safely against mixed estates.
+
+## Verifying changes
+
+```bash
+python3 tests/test_netmon.py
+```
+
+43 tests covering BER encoding, RFC 3414 key derivation vectors, counter-wrap
+arithmetic, live polling against the mock switch, and the alert state machine.
+Run them after any edit to `snmp.py` or `netmon.py`.
+
+If `snmpd` (net-snmp) is installed, the suite additionally runs interoperability
+tests against that real agent — v1, v2c, v3 authNoPriv and authPriv — and
+compares our GETBULK walk against `snmpbulkwalk` output. These skip
+automatically when net-snmp is absent. Keep them: testing only against the
+bundled simulator cannot catch a message that is encoded and decoded wrongly
+in the same way.
