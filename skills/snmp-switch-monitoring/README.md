@@ -1,8 +1,38 @@
 # SNMP switch monitoring
 
-Monitor network switches over SNMP. Nothing to install — it runs on the Python
-standard library that ships with every Mac and Linux box, and with Python on
-Windows.
+Monitor network switches over SNMP. No Python packages to install — it runs on
+the standard library that ships with every Mac and Linux box, and with Python
+on Windows.
+
+## Install
+
+macOS / Linux:
+
+```bash
+git clone --branch claude/snmp-switch-monitoring-8qhhms --depth 1 \
+  https://github.com/scottorogers/agentskills.git
+cd agentskills/skills/snmp-switch-monitoring
+./install.sh
+```
+
+That copies the skill to `~/.claude/skills/snmp-switch-monitoring` and runs its
+test suite to confirm it works on that machine. Use `./install.sh --project` to
+install into `./.claude/skills` for one project instead. Restart Claude Code
+afterwards so it picks the skill up.
+
+Windows: run `.\install.ps1` from PowerShell. If it gives trouble, use Git Bash
+or WSL and run `./install.sh` instead.
+
+**Manual install** — the scripts are a convenience, not a requirement. Copying
+the folder is the whole job:
+
+```bash
+mkdir -p ~/.claude/skills
+cp -R snmp-switch-monitoring ~/.claude/skills/
+python3 ~/.claude/skills/snmp-switch-monitoring/tests/test_netmon.py
+```
+
+Requires Python 3.9+. To uninstall, delete the folder.
 
 ## For someone using Claude
 
