@@ -801,12 +801,65 @@ def run_selftest() -> int:
             else "not available (only needed for SNMPv3 authPriv; v2c is fine)"
         )
 
+    def _database():
+        import tempfile
+
+        port = sim_port["value"]
+        if port is None:
+            raise RuntimeError("simulator did not start, so storage was not tried")
+        with tempfile.TemporaryDirectory() as tmp:
+            conn = sqlite3.connect(str(Path(tmp) / "probe.db"))
+            conn.row_factory = sqlite3.Row
+            conn.executescript(SCHEMA)
+            try:
+                snap = poll_device(
+                    {"host": f"127.0.0.1:{port}", "community": "public"},
+                    DEFAULT_CONFIG,
+                )
+                store_and_evaluate(conn, snap, DEFAULT_CONFIG)
+                conn.commit()
+                stored = conn.execute(
+                    "SELECT COUNT(*) AS n FROM port_samples"
+                ).fetchone()["n"]
+            finally:
+                conn.close()
+        if not stored:
+            raise RuntimeError("nothing was written to the database")
+        return f"wrote and read back {stored} port samples"
+
+    def _webserver():
+        import tempfile
+        import urllib.request
+
+        with tempfile.TemporaryDirectory() as tmp:
+            monitor = Monitor(Path(tmp))
+            Handler.monitor = monitor
+            server = ThreadingHTTPServer(("127.0.0.1", pick_port(8900)), Handler)
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            url = f"http://127.0.0.1:{server.server_address[1]}"
+            try:
+                with urllib.request.urlopen(f"{url}/api/state", timeout=5) as resp:
+                    state = json.loads(resp.read())
+                with urllib.request.urlopen(url + "/", timeout=5) as resp:
+                    page = resp.read()
+            finally:
+                server.shutdown()
+                server.server_close()
+                monitor.conn.close()
+        if "devices" not in state:
+            raise RuntimeError("the dashboard API returned something unexpected")
+        if b"Switch Monitor" not in page:
+            raise RuntimeError("the dashboard page did not render")
+        return f"served the dashboard ({len(page) // 1024} KB) and its data feed"
+
     check("Standard library complete", _stdlib)
     check("Local web server can start", _loopback)
     check("Network sockets usable", _udp)
     check("Data folder writable", _writable)
     check("Built-in simulator starts", _simulator)
     check("SNMP polling works", _poll)
+    check("History database works", _database)
+    check("Dashboard serves pages", _webserver)
     check("Optional encryption", _crypto)
 
     for _, line in results:
