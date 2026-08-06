@@ -69,6 +69,10 @@ IFX_COLUMNS = {
     "alias": "1.3.6.1.2.1.31.1.1.1.18",
 }
 
+# `python3` does not exist on a default Windows install; the interpreter is
+# reached as `py` or `python`. Used only in user-facing hint text.
+PY_HINT = "py" if os.name == "nt" else "python3"
+
 OPER_STATUS = {
     1: "up", 2: "down", 3: "testing", 4: "unknown",
     5: "dormant", 6: "notPresent", 7: "lowerLayerDown",
@@ -645,8 +649,12 @@ def run_command(command: str, alert: dict):
         "NETMON_MESSAGE": alert["message"],
         "NETMON_IFINDEX": str(alert["ifindex"] or ""),
     })
+    # POSIX splitting treats backslashes as escapes, so a Windows command like
+    # C:\tools\notify.bat becomes C:toolsnotify.bat. On Windows pass the string
+    # through and let CreateProcess parse it, which is what it expects.
+    args = command if os.name == "nt" else shlex.split(command)
     try:
-        subprocess.run(shlex.split(command), env=env, timeout=30, check=False)
+        subprocess.run(args, env=env, timeout=30, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
         print(f"warning: alert command failed: {exc}", file=sys.stderr)
 
@@ -782,8 +790,9 @@ def cmd_discover(args, config):
         os.chmod(path, 0o600)
     except OSError:
         pass
-    print(f"\nwrote {len(found)} device(s) to {path} (mode 600)")
-    print(f"next: python3 {Path(__file__).name} watch --config {path}")
+    perms = "" if os.name == "nt" else " (mode 600)"
+    print(f"\nwrote {len(found)} device(s) to {path}{perms}")
+    print(f"next: {PY_HINT} {Path(__file__).name} watch --config {path}")
     return 0
 
 
@@ -792,7 +801,7 @@ def poll_all(conn, config, quiet=False):
     if not devices:
         raise SystemExit(
             f"no devices configured in {config.get('_path')}. Run: "
-            f"python3 {Path(__file__).name} discover <host-or-cidr>"
+            f"{PY_HINT} {Path(__file__).name} discover <host-or-cidr>"
         )
     workers = min(16, max(1, len(devices)))
     alerts: list[dict] = []

@@ -21,6 +21,29 @@ If nothing happens, you need Python. It is free, from python.org/downloads.
 On Windows, tick "Add Python to PATH" in the installer.
 
 
+ON WINDOWS, UNBLOCK THE ZIP FIRST
+---------------------------------
+
+Windows marks anything downloaded from the internet and can refuse to run
+it. Before you extract the zip:
+
+    RIGHT-CLICK the zip file, choose Properties, tick "Unblock" at the
+    bottom, click OK. Then extract it.
+
+If you already extracted it and Windows complains, right-click
+"Start Switch Monitor.bat", choose Properties, tick Unblock.
+
+If a blue "Windows protected your PC" box appears, click "More info" then
+"Run anyway".
+
+If the Microsoft Store opens instead of the app, that is Windows' Python
+placeholder, not Python. Install the real thing from python.org/downloads
+and tick "Add Python to PATH" during installation.
+
+Windows may ask whether to allow network access. You can decline - the
+dashboard only talks to your own computer.
+
+
 ON A MAC, THE FIRST LAUNCH NEEDS ONE EXTRA STEP
 -----------------------------------------------
 
