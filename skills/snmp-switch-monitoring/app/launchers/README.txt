@@ -21,6 +21,41 @@ If nothing happens, you need Python. It is free, from python.org/downloads.
 On Windows, tick "Add Python to PATH" in the installer.
 
 
+ON A MAC, THE FIRST LAUNCH NEEDS ONE EXTRA STEP
+-----------------------------------------------
+
+macOS blocks programs downloaded from the internet. The first time only:
+
+    RIGHT-CLICK  "Start Switch Monitor.command"  and choose  Open,
+    then click  Open  in the box that appears.
+
+After that, double-clicking works normally.
+
+If macOS still refuses, or says "permission denied", open Terminal, type
+"cd " (with the space), drag this folder onto the Terminal window, press
+Return, and then run these two lines:
+
+    xattr -dr com.apple.quarantine .
+    chmod +x "Start Switch Monitor.command" start-switch-monitor.sh
+
+Recent versions of macOS do not include Python. If you are told it is
+missing, install it from python.org/downloads and try again.
+
+
+CHECKING IT WORKS ON YOUR MACHINE
+---------------------------------
+
+To confirm everything is in order before you rely on it, open Terminal in
+this folder and run:
+
+    python3 netmon-app.py --selftest
+
+It checks Python, the local web server, network access, the data folder,
+and does a real SNMP poll against a simulated switch. Every line says PASS
+or explains exactly what failed. If anything fails, send those lines to
+whoever gave you this app.
+
+
 FIRST RUN
 ---------
 

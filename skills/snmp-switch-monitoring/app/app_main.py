@@ -699,6 +699,132 @@ setInterval(refresh, 3000);
 """
 
 
+def run_selftest() -> int:
+    """Check this machine can actually run the app, and say what failed.
+
+    Written to be pasted back verbatim by a non-technical user, so every
+    line is either PASS or an actionable FAIL.
+    """
+    import platform
+
+    results: list[tuple[bool, str]] = []
+
+    def check(label: str, fn):
+        try:
+            detail = fn()
+            results.append((True, f"PASS  {label}" + (f" -- {detail}" if detail else "")))
+        except Exception as exc:
+            results.append((False, f"FAIL  {label} -- {type(exc).__name__}: {exc}"))
+
+    print("=" * 66)
+    print("  Switch Monitor self-test")
+    print("=" * 66)
+    print(f"  Python     {sys.version.split()[0]}  ({sys.executable})")
+    print(f"  System     {platform.platform()}")
+    print(f"  Machine    {platform.machine()}")
+    print("-" * 66)
+
+    def _stdlib():
+        import http.server, sqlite3, webbrowser  # noqa: F401
+        return None
+
+    def _loopback():
+        port = pick_port()
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        probe.bind(("127.0.0.1", port))
+        probe.close()
+        return f"can bind 127.0.0.1:{port}"
+
+    def _udp():
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(1)
+        sock.close()
+        return "UDP socket available (needed to reach switches)"
+
+    def _writable():
+        base = Path(
+            os.environ.get("SWITCH_MONITOR_HOME") or (Path.home() / "SwitchMonitor")
+        )
+        base.mkdir(parents=True, exist_ok=True)
+        probe = base / ".write-test"
+        probe.write_text("ok")
+        probe.unlink()
+        return f"data folder writable: {base}"
+
+    sim_port = {"value": None}
+
+    def _simulator():
+        port = pick_port(SIMULATOR_PORT)
+        switch = MockSwitch(ports=8, name="selftest-switch")
+        thread = threading.Thread(
+            target=serve, args=("127.0.0.1", port, "public", switch),
+            kwargs={"quiet": True}, daemon=True,
+        )
+        thread.start()
+        time.sleep(0.4)
+        sim_port["value"] = port
+        return f"simulated switch listening on 127.0.0.1:{port}"
+
+    def _poll():
+        port = sim_port["value"]
+        if port is None:
+            raise RuntimeError("simulator did not start, so polling was not tried")
+        snap = poll_device(
+            {"host": f"127.0.0.1:{port}", "community": "public"}, DEFAULT_CONFIG
+        )
+        if not snap["reachable"]:
+            raise RuntimeError(snap["error"])
+        return f"polled {len(snap['ports'])} ports over real SNMP"
+
+    def _crypto():
+        # A broken 'cryptography' install can panic in native code and write
+        # straight to the process's stderr, which a Python-level redirect
+        # cannot intercept. Swap the file descriptors so the self-test's own
+        # output stays clean and trustworthy.
+        saved = (os.dup(1), os.dup(2))
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        try:
+            os.dup2(devnull, 1)
+            os.dup2(devnull, 2)
+            try:
+                _load_cipher("AES")(b"\x00" * 16, b"\x00" * 16, b"probe", True)
+                available = True
+            except SnmpError:
+                available = False
+        finally:
+            os.dup2(saved[0], 1)
+            os.dup2(saved[1], 2)
+            for fd in (*saved, devnull):
+                os.close(fd)
+        return (
+            "SNMPv3 encryption available" if available
+            else "not available (only needed for SNMPv3 authPriv; v2c is fine)"
+        )
+
+    check("Standard library complete", _stdlib)
+    check("Local web server can start", _loopback)
+    check("Network sockets usable", _udp)
+    check("Data folder writable", _writable)
+    check("Built-in simulator starts", _simulator)
+    check("SNMP polling works", _poll)
+    check("Optional encryption", _crypto)
+
+    for _, line in results:
+        print("  " + line)
+    print("-" * 66)
+
+    failures = [line for ok, line in results if not ok]
+    if failures:
+        print(f"  {len(failures)} check(s) FAILED. Send the lines above to whoever")
+        print("  gave you this app -- they identify the problem exactly.")
+        print("=" * 66)
+        return 1
+    print("  Everything works on this machine.")
+    print("  Start the app by running it with no arguments.")
+    print("=" * 66)
+    return 0
+
+
 SIMULATOR_PORT = 11161
 
 
@@ -727,6 +853,9 @@ def start_simulator(port: int = SIMULATOR_PORT) -> int:
 
 def main_dispatch(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+
+    if "--selftest" in argv:
+        return run_selftest()
 
     simulate = "--simulate" in argv
     if simulate:
